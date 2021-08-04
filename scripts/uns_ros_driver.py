@@ -101,7 +101,8 @@ class UnsRosDriver(UnsDriver):
             magnetometer_z = package['magnetometer_z']
 
         elif id == NORTEK_DEFINES.DVL_DATA_ID:
-            # Data from the three angled transducers        
+            # Data from the three angled transducers
+            # This could be simplified using the status bit, see page 11 of the communication spec        
             v_b   = [package['velocity_beam_0'], package['velocity_beam_1'], package['velocity_beam_2']]
             d_b   = [package['distance_beam_0'], package['distance_beam_1'], package['distance_beam_2']]
             fom_b = [package['fom_beam_0'], package['fom_beam_1'], package['fom_beam_2']]
