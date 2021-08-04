@@ -13,22 +13,27 @@ from tf.transformations import quaternion_from_euler
 import time
 import serial
 
-IMU_DATA_ID = "0x82"
-MAG_DATA_ID = "0x87"
-GNSS_DATA_ID = "0x91"
-ALT_DATA_ID = "0xaa"
-DVL_DATA_ID = "0xb4"
-WATER_TRACK_DATA_ID = "0xbe"
-AHRS_DATA_ID = "0xd2" 
 
-INVALID_FOM = 9.9   # Data sheet says 10.0, set lower here to be on the safe side :)
-INVALID_DISTANCE = 0.0
-INVALID_VELOCITY = -30.0 # Data sheet says -32.768, set higher here to be on the safe side :)
+class NORTEK_DEFINES:
+    """
+    This class just serves as a pseudo-namespace for constants defined by nortek
+    """
+    IMU_DATA_ID = "0x82"
+    MAG_DATA_ID = "0x87"
+    GNSS_DATA_ID = "0x91"
+    ALT_DATA_ID = "0xaa"
+    DVL_DATA_ID = "0xb4"
+    WATER_TRACK_DATA_ID = "0xbe"
+    AHRS_DATA_ID = "0xd2" 
 
-# See page 15 of the communication interface spec
-AHRS_CALIBRATING = 0
-AHRS_INITIALIZING = 1
-AHRS_REGULAR_MODE = 2
+    INVALID_FOM = 9.9   # Data sheet says 10.0, set lower here to be on the safe side :)
+    INVALID_DISTANCE = 0.0
+    INVALID_VELOCITY = -30.0 # Data sheet says -32.768, set higher here to be on the safe side :)
+
+    # See page 15 of the communication interface spec
+    AHRS_CALIBRATING = 0
+    AHRS_INITIALIZING = 1
+    AHRS_REGULAR_MODE = 2
 
 class UnsRosDriver(UnsDriver):
 
@@ -65,7 +70,7 @@ class UnsRosDriver(UnsDriver):
         id = package['id']
 
 
-        if id == IMU_DATA_ID:
+        if id == NORTEK_DEFINES.IMU_DATA_ID:
             imu_msg = Imu()
 
             imu_msg.header.seq = self.imu_pub_seq
@@ -89,13 +94,13 @@ class UnsRosDriver(UnsDriver):
             self.imu_data_pub.publish(imu_msg)
             self.imu_pub_seq += 1
         
-        elif id == MAG_DATA_ID:
+        elif id == NORTEK_DEFINES.MAG_DATA_ID:
 
             magnetometer_x = package['magnetometer_x']
             magnetometer_y = package['magnetometer_y']
             magnetometer_z = package['magnetometer_z']
 
-        elif id == DVL_DATA_ID:
+        elif id == NORTEK_DEFINES.DVL_DATA_ID:
             # Data from the three angled transducers        
             v_b   = [package['velocity_beam_0'], package['velocity_beam_1'], package['velocity_beam_2']]
             d_b   = [package['distance_beam_0'], package['distance_beam_1'], package['distance_beam_2']]
@@ -104,16 +109,16 @@ class UnsRosDriver(UnsDriver):
 
             # Check validity of incoming data, note that we avoid == to account for precision errors
             invalid_data = ""
-            if any(velocity <= INVALID_VELOCITY for velocity in v_b):
+            if any(velocity <= NORTEK_DEFINES.INVALID_VELOCITY for velocity in v_b):
                 invalid_data += "velocity "
 
-            if any(distance <= INVALID_DISTANCE for distance in d_b):
+            if any(distance <= NORTEK_DEFINES.INVALID_DISTANCE for distance in d_b):
                 invalid_data += "distance "
             
-            if any(fom >= INVALID_FOM for fom in fom_b):
+            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_b):
                 invalid_data += "beam-fom "
             
-            if any(fom >= INVALID_FOM for fom in fom_xyz):
+            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_xyz):
                 invalid_data += "xyz-fom "
 
             if invalid_data != "":
@@ -129,7 +134,7 @@ class UnsRosDriver(UnsDriver):
             rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
             rospy.loginfo("Pressure: %.4f" % pressure)
 
-        elif id == AHRS_DATA_ID:
+        elif id == NORTEK_DEFINES.AHRS_DATA_ID:
 
             op_mode = package['operation_mode']
 
