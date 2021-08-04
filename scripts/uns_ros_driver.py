@@ -25,6 +25,11 @@ INVALID_FOM = 9.9   # Data sheet says 10.0, set lower here to be on the safe sid
 INVALID_DISTANCE = 0.0
 INVALID_VELOCITY = -30.0 # Data sheet says -32.768, set higher here to be on the safe side :)
 
+# See page 15 of the communication interface spec
+AHRS_CALIBRATING = 0
+AHRS_INITIALIZING = 1
+AHRS_REGULAR_MODE = 2
+
 class UnsRosDriver(UnsDriver):
 
     def __init__(self):
@@ -112,7 +117,7 @@ class UnsRosDriver(UnsDriver):
                 invalid_data += "xyz-fom "
 
             if invalid_data != "":
-                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
+                #rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
                 return
             
             v_x = package['velocity_x']
@@ -120,14 +125,41 @@ class UnsRosDriver(UnsDriver):
             v_z = package['velocity_z']
             pressure = package['pressure']
 
-            # TODO: Make odometry message with velocities and pressure -> z
+            # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
             rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
             rospy.loginfo("Pressure: %.4f" % pressure)
 
         elif id == AHRS_DATA_ID:
-            pass
 
+            op_mode = package['operation_mode']
 
+            # Currently always in calibrating mode? TODO: Ask :)
+            #if op_mode == AHRS_CALIBRATING:
+            #    rospy.logwarn("AHRS calibrating...")
+            #    return
+            #
+            #if op_mode == AHRS_INITIALIZING:
+            #    rospy.logwarn("AHRS initializing...")
+            #    return
+            
+            fom_ahrs = package['fom_ahrs']
+            fom_field_calib = package['fom_fc1']
+
+            x = package['quaternion_0']
+            y = package['quaternion_1']
+            z = package['quaternion_2']
+            w = package['quaternion_3']
+
+            R_bn = [ [package['dcm_11'], package['dcm_12'], package['dcm_13']],
+                     [package['dcm_21'], package['dcm_22'], package['dcm_23']],
+                     [package['dcm_31'], package['dcm_32'], package['dcm_33']]]
+
+            declination = package['declination']
+            depth = package['depth']
+            
+            # TODO: Make PosedStamped message from orientation and depth
+            rospy.loginfo(depth)
+            rospy.loginfo("%.4f, %.4f, %.4f, %.4f" % (x, y, z, w))
 
 
     def write_condition(self, error_message, package):
