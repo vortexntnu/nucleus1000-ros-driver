@@ -73,6 +73,8 @@ class UnsRosDriver(UnsDriver):
         if id == NORTEK_DEFINES.IMU_DATA_ID:
             imu_msg = Imu()
 
+            status = package['status']
+
             imu_msg.header.seq = self.imu_pub_seq
             imu_msg.header.stamp = rospy.Time.now()
             imu_msg.header.frame_id = self.uns_frame_id
@@ -93,7 +95,7 @@ class UnsRosDriver(UnsDriver):
 
             self.imu_data_pub.publish(imu_msg)
             self.imu_pub_seq += 1
-        
+
         elif id == NORTEK_DEFINES.MAG_DATA_ID:
 
             magnetometer_x = package['magnetometer_x']
@@ -101,29 +103,21 @@ class UnsRosDriver(UnsDriver):
             magnetometer_z = package['magnetometer_z']
 
         elif id == NORTEK_DEFINES.DVL_DATA_ID:
-            # Data from the three angled transducers
-            # This could be simplified using the status bit, see page 11 of the communication spec        
-            v_b   = [package['velocity_beam_0'], package['velocity_beam_1'], package['velocity_beam_2']]
-            d_b   = [package['distance_beam_0'], package['distance_beam_1'], package['distance_beam_2']]
-            fom_b = [package['fom_beam_0'], package['fom_beam_1'], package['fom_beam_2']]
-            fom_xyz = [package['fom_x'], package['fom_y'], package['fom_z']]
+            
+            status = int(package['status'], 16) # 18 bit fields with statuses, see page 11 of the communication spec
 
-            # Check validity of incoming data, note that we avoid == to account for precision errors
             invalid_data = ""
-            if any(velocity <= NORTEK_DEFINES.INVALID_VELOCITY for velocity in v_b):
+            if not self.valid_data(status, 9, 3):
                 invalid_data += "velocity "
 
-            if any(distance <= NORTEK_DEFINES.INVALID_DISTANCE for distance in d_b):
-                invalid_data += "distance "
-            
-            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_b):
-                invalid_data += "beam-fom "
-            
-            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_xyz):
+            if not self.valid_data(status, 12, 3):
                 invalid_data += "xyz-fom "
 
+            if not self.valid_data(status, 16, 1):
+                invalid_data += "pressure "
+
             if invalid_data != "":
-                #rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
+                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
                 return
             
             v_x = package['velocity_x']
@@ -132,12 +126,13 @@ class UnsRosDriver(UnsDriver):
             pressure = package['pressure']
 
             # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
-            rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
-            rospy.loginfo("Pressure: %.4f" % pressure)
+            #rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
+            #rospy.loginfo("Pressure: %.4f" % pressure)
 
         elif id == NORTEK_DEFINES.AHRS_DATA_ID:
 
-            op_mode = package['operation_mode']
+            status = package['status']
+            op_mode = package['operation_mode'] # == status?
 
             # Currently always in calibrating mode? TODO: Ask :)
             #if op_mode == AHRS_CALIBRATING:
@@ -164,8 +159,8 @@ class UnsRosDriver(UnsDriver):
             depth = package['depth']
             
             # TODO: Make PosedStamped message from orientation and depth
-            rospy.loginfo(depth)
-            rospy.loginfo("%.4f, %.4f, %.4f, %.4f" % (x, y, z, w))
+            #rospy.loginfo(depth)
+            #rospy.loginfo("%.4f, %.4f, %.4f, %.4f" % (x, y, z, w))
 
 
     def write_condition(self, error_message, package):
@@ -182,6 +177,21 @@ class UnsRosDriver(UnsDriver):
         """
         ascii_string = "".join([chr(v) for v in ascii_package])
         rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
+
+    @staticmethod
+    def valid_data(data, starting_bit, n_bits):
+        """
+        Returns True if all of the n_bits in data, starting from starting_bit and counting up,
+        are 1, and 0 otherwise
+
+        Check the status byte tables in the UNS communication interface spec to figure out
+        what to use for starting_bit and n_bits for validating whatever data you may wish to validate.
+        """
+        mask = 0
+        for i in range(n_bits):
+            mask |= (1 << i)
+
+        return (data >> starting_bit) & mask == mask
 
 
 if __name__ == "__main__":
