@@ -103,27 +103,42 @@ class UnsRosDriver(UnsDriver):
             magnetometer_z = package['magnetometer_z']
 
         elif id == NORTEK_DEFINES.DVL_DATA_ID:
-            
-            status = int(package['status'], 16) # 18 bit fields with statuses, see page 11 of the communication spec
+            # Data from the three angled transducers
+            # This could be simplified using the status bit, see page 11 of the communication spec,
+            # but is left like this since we explicitly retrieve the data
 
+            #status = package['status']
+                    
+            v_b   = [package['velocity_beam_0'], package['velocity_beam_1'], package['velocity_beam_2']]
+            d_b   = [package['distance_beam_0'], package['distance_beam_1'], package['distance_beam_2']]
+            fom_b = [package['fom_beam_0'], package['fom_beam_1'], package['fom_beam_2']]
+            fom_xyz = [package['fom_x'], package['fom_y'], package['fom_z']]
+
+            #any_invalid_data = (~status & 0xFFFFFFFF) & 0x3FFFF # First & is to limit to 32 bit precision and second is to cut off the 18 bits we use
+
+            # Check validity of incoming data, note that we avoid == to account for precision errors
             invalid_data = ""
-            if not self.valid_data(status, 9, 3):
+            if any(velocity <= NORTEK_DEFINES.INVALID_VELOCITY for velocity in v_b):
                 invalid_data += "velocity "
 
-            if not self.valid_data(status, 12, 3):
+            if any(distance <= NORTEK_DEFINES.INVALID_DISTANCE for distance in d_b):
+                invalid_data += "distance "
+            
+            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_b):
+                invalid_data += "beam-fom "
+            
+            if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_xyz):
                 invalid_data += "xyz-fom "
 
-            if not self.valid_data(status, 16, 1):
-                invalid_data += "pressure "
-
             if invalid_data != "":
-                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
+                #rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
                 return
             
             v_x = package['velocity_x']
             v_y = package['velocity_y']
             v_z = package['velocity_z']
             pressure = package['pressure']
+
 
             # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
             #rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
@@ -177,22 +192,7 @@ class UnsRosDriver(UnsDriver):
         """
         ascii_string = "".join([chr(v) for v in ascii_package])
         rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
-
-    @staticmethod
-    def valid_data(data, starting_bit, n_bits):
-        """
-        Returns True if all of the n_bits in data, starting from starting_bit and counting up,
-        are 1, and 0 otherwise
-
-        Check the status byte tables in the UNS communication interface spec to figure out
-        what to use for starting_bit and n_bits for validating whatever data you may wish to validate.
-        """
-        mask = 0
-        for i in range(n_bits):
-            mask |= (1 << i)
-
-        return (data >> starting_bit) & mask == mask
-
+        
 
 if __name__ == "__main__":
 
