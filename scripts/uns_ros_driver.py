@@ -7,6 +7,7 @@ extracted packages from the UNS are handled.
 
 import rospy
 from sensor_msgs.msg import Imu
+from geometry_msgs.msg import PoseStamped
 from uns_driver import UnsDriver
 from tf.transformations import quaternion_from_euler
 
@@ -25,6 +26,7 @@ class NORTEK_DEFINES:
     DVL_DATA_ID = "0xb4"
     WATER_TRACK_DATA_ID = "0xbe"
     AHRS_DATA_ID = "0xd2" 
+    INS_DATA_ID = "0xdc"
 
     INVALID_FOM = 9.9   # Data sheet says 10.0, set lower here to be on the safe side :)
     INVALID_DISTANCE = 0.0
@@ -56,6 +58,9 @@ class UnsRosDriver(UnsDriver):
 
         self.imu_data_pub = rospy.Publisher("/uns/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
+
+        self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseStamped, queue_size=10)
+        self.ahrs_pub_seq = 0
     
     def __del__(self):
         self.stop_uns()
@@ -131,7 +136,7 @@ class UnsRosDriver(UnsDriver):
                 invalid_data += "xyz-fom "
 
             if invalid_data != "":
-                #rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
+                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
                 return
             
             v_x = package['velocity_x']
@@ -139,10 +144,9 @@ class UnsRosDriver(UnsDriver):
             v_z = package['velocity_z']
             pressure = package['pressure']
 
-
             # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
-            #rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
-            #rospy.loginfo("Pressure: %.4f" % pressure)
+            rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
+            rospy.loginfo("Pressure: %.4f" % pressure)
 
         elif id == NORTEK_DEFINES.AHRS_DATA_ID:
 
@@ -161,21 +165,21 @@ class UnsRosDriver(UnsDriver):
             fom_ahrs = package['fom_ahrs']
             fom_field_calib = package['fom_fc1']
 
-            w = package['quaternion_0']
-            x = package['quaternion_1']
-            y = package['quaternion_2']
-            z = package['quaternion_3']
+            ahrs_pose = PoseStamped()
 
-            R_bn = [ [package['dcm_11'], package['dcm_12'], package['dcm_13']],
-                     [package['dcm_21'], package['dcm_22'], package['dcm_23']],
-                     [package['dcm_31'], package['dcm_32'], package['dcm_33']]]
-
-            declination = package['declination']
-            depth = package['depth']
+            ahrs_pose.header.seq = self.ahrs_pub_seq
+            ahrs_pose.header.stamp = rospy.Time.now()
+            ahrs_pose.header.frame_id = self.uns_frame_id
             
-            # TODO: Make PosedStamped message from orientation and depth
-            #rospy.loginfo(depth)
-            #rospy.loginfo("%.4f, %.4f, %.4f, %.4f" % (x, y, z, w))
+            ahrs_pose.pose.position.z = package['depth']
+            
+            ahrs_pose.pose.orientation.x = package['quaternion_1']
+            ahrs_pose.pose.orientation.y = package['quaternion_2']
+            ahrs_pose.pose.orientation.z = package['quaternion_3']
+            ahrs_pose.pose.orientation.w = package['quaternion_0']
+
+            self.ahrs_pose_pub.publish(ahrs_pose)
+            self.ahrs_pub_seq += 1
 
         elif id == NORTEK_DEFINES.ALT_DATA_ID:
 
