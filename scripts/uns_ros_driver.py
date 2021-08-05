@@ -177,6 +177,13 @@ class UnsRosDriver(UnsDriver):
             #rospy.loginfo(depth)
             #rospy.loginfo("%.4f, %.4f, %.4f, %.4f" % (x, y, z, w))
 
+        elif id == NORTEK_DEFINES.ALT_DATA_ID:
+
+            distance = package['altimeter_distance']
+            quality = package['altimeter_quality']
+
+            # TODO: publish as own "distance to bottom" topic
+        
 
     def write_condition(self, error_message, package):
         """
@@ -192,7 +199,7 @@ class UnsRosDriver(UnsDriver):
         """
         ascii_string = "".join([chr(v) for v in ascii_package])
         rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
-        
+
 
 if __name__ == "__main__":
 
