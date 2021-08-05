@@ -151,10 +151,10 @@ class UnsRosDriver(UnsDriver):
             fom_ahrs = package['fom_ahrs']
             fom_field_calib = package['fom_fc1']
 
-            x = package['quaternion_0']
-            y = package['quaternion_1']
-            z = package['quaternion_2']
-            w = package['quaternion_3']
+            w = package['quaternion_0']
+            x = package['quaternion_1']
+            y = package['quaternion_2']
+            z = package['quaternion_3']
 
             R_bn = [ [package['dcm_11'], package['dcm_12'], package['dcm_13']],
                      [package['dcm_21'], package['dcm_22'], package['dcm_23']],
