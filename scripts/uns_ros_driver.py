@@ -40,7 +40,7 @@ class NORTEK_DEFINES:
 class UnsRosDriver(UnsDriver):
 
     def __init__(self):
-        # TODO: Get as rosparam
+        # TODO: Get as rosparam - could maybe get port automatically from device ID
         port = "/dev/ttyUSB0"
         baud = 115200
         use_queues = False
