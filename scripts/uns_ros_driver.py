@@ -8,7 +8,7 @@ extracted packages from the UNS are handled.
 import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
-from geometry_msgs.msg import PoseStamped, TwistWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
 from uns_driver import UnsDriver
 from tf.transformations import quaternion_from_euler
 
@@ -63,7 +63,7 @@ class UnsRosDriver(UnsDriver):
         self.dvl_twist_pub = rospy.Publisher("/uns/dvl_data", TwistWithCovarianceStamped, queue_size=10)
         self.dvl_pub_seq = 0
 
-        self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseStamped, queue_size=10)
+        self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseWithCovarianceStamped, queue_size=10)
         self.ahrs_pub_seq = 0
 
         self.altitude_pub = rospy.Publisher("/uns/altitude", Float32, queue_size=10)
@@ -190,18 +190,29 @@ class UnsRosDriver(UnsDriver):
             fom_ahrs = package['fom_ahrs']
             fom_field_calib = package['fom_fc1']
 
-            ahrs_pose = PoseStamped()
+            ahrs_pose = PoseWithCovarianceStamped()
 
             ahrs_pose.header.seq = self.ahrs_pub_seq
             ahrs_pose.header.stamp = rospy.Time.now()
             ahrs_pose.header.frame_id = self.uns_frame_id
             
-            ahrs_pose.pose.position.z = package['depth']
+            ahrs_pose.pose.pose.position.z = package['depth']
             
-            ahrs_pose.pose.orientation.x = package['quaternion_1']
-            ahrs_pose.pose.orientation.y = package['quaternion_2']
-            ahrs_pose.pose.orientation.z = package['quaternion_3']
-            ahrs_pose.pose.orientation.w = package['quaternion_0']
+            ahrs_pose.pose.pose.orientation.x = package['quaternion_1']
+            ahrs_pose.pose.pose.orientation.y = package['quaternion_2']
+            ahrs_pose.pose.pose.orientation.z = package['quaternion_3']
+            ahrs_pose.pose.pose.orientation.w = package['quaternion_0']
+
+            var_z = 0
+            var_rx = 0
+            var_ry = 0
+            var_rz = 0
+            ahrs_pose.pose.covariance = [0, 0,   0,     0,     0,     0,
+                                         0, 0,   0,     0,     0,     0,
+                                         0, 0, var_z,   0,     0,     0,
+                                         0, 0,   0,  var_rx,   0,     0,
+                                         0, 0,   0,     0,  var_ry,   0,
+                                         0, 0,   0,     0,     0,  var_rz]
 
             self.ahrs_pose_pub.publish(ahrs_pose)
             self.ahrs_pub_seq += 1
