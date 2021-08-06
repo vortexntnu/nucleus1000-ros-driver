@@ -6,8 +6,9 @@ extracted packages from the UNS are handled.
 """
 
 import rospy
+from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistWithCovarianceStamped
 from uns_driver import UnsDriver
 from tf.transformations import quaternion_from_euler
 
@@ -61,6 +62,8 @@ class UnsRosDriver(UnsDriver):
 
         self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseStamped, queue_size=10)
         self.ahrs_pub_seq = 0
+
+        self.altitude_pub = rospy.Publisher("/uns/altitude", Float32, queue_size=10)
     
     def __del__(self):
         self.stop_uns()
@@ -120,14 +123,14 @@ class UnsRosDriver(UnsDriver):
             fom_xyz = [package['fom_x'], package['fom_y'], package['fom_z']]
 
             #any_invalid_data = (~status & 0xFFFFFFFF) & 0x3FFFF # First & is to limit to 32 bit precision and second is to cut off the 18 bits we use
-
+            # Alternatively: any_invalid_data = status < 0x3FFFF
             # Check validity of incoming data, note that we avoid == to account for precision errors
             invalid_data = ""
             if any(velocity <= NORTEK_DEFINES.INVALID_VELOCITY for velocity in v_b):
-                invalid_data += "velocity "
+                invalid_data += "beam-velocity "
 
             if any(distance <= NORTEK_DEFINES.INVALID_DISTANCE for distance in d_b):
-                invalid_data += "distance "
+                invalid_data += "beam-distance "
             
             if any(fom >= NORTEK_DEFINES.INVALID_FOM for fom in fom_b):
                 invalid_data += "beam-fom "
@@ -142,11 +145,11 @@ class UnsRosDriver(UnsDriver):
             v_x = package['velocity_x']
             v_y = package['velocity_y']
             v_z = package['velocity_z']
-            pressure = package['pressure']
+            #pressure = package['pressure']
 
             # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
-            rospy.loginfo("Velocity XYZ: %.4f, %.4f, %.4f" % (v_x, v_y, v_z))
-            rospy.loginfo("Pressure: %.4f" % pressure)
+            dvl_msg = TwistWithCovarianceStamped
+
 
         elif id == NORTEK_DEFINES.AHRS_DATA_ID:
 
@@ -183,10 +186,13 @@ class UnsRosDriver(UnsDriver):
 
         elif id == NORTEK_DEFINES.ALT_DATA_ID:
 
-            distance = package['altimeter_distance']
             quality = package['altimeter_quality']
 
-            # TODO: publish as own "distance to bottom" topic
+            distance = Float32()
+            distance.data = package['altimeter_distance']
+
+            self.altitude_pub.publish(distance)
+
         
 
     def write_condition(self, error_message, package):
