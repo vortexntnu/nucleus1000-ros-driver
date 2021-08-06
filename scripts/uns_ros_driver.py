@@ -60,6 +60,9 @@ class UnsRosDriver(UnsDriver):
         self.imu_data_pub = rospy.Publisher("/uns/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
 
+        self.dvl_twist_pub = rospy.Publisher("/uns/dvl_data", TwistWithCovarianceStamped, queue_size=10)
+        self.dvl_pub_seq = 0
+
         self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseStamped, queue_size=10)
         self.ahrs_pub_seq = 0
 
@@ -142,13 +145,32 @@ class UnsRosDriver(UnsDriver):
                 rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
                 return
             
-            v_x = package['velocity_x']
-            v_y = package['velocity_y']
-            v_z = package['velocity_z']
             #pressure = package['pressure']
 
             # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
-            dvl_msg = TwistWithCovarianceStamped
+            dvl_msg = TwistWithCovarianceStamped()
+
+            dvl_msg.header.seq = self.dvl_pub_seq
+            dvl_msg.header.stamp = rospy.Time.now()
+            dvl_msg.header.frame_id = self.uns_frame_id
+
+            dvl_msg.twist.twist.linear.x = package['velocity_x']
+            dvl_msg.twist.twist.linear.y = package['velocity_y']
+            dvl_msg.twist.twist.linear.z = package['velocity_z']
+
+            var_x = fom_xyz[0] * fom_xyz[0]
+            var_y = fom_xyz[1] * fom_xyz[1]
+            var_z = fom_xyz[2] * fom_xyz[2]
+
+            dvl_msg.twist.covariance = [var_x,  0,    0,   0, 0, 0,
+                                          0,  var_y,  0,   0, 0, 0,
+                                          0,    0,  var_z, 0, 0, 0,
+                                          0,    0,    0,   0, 0, 0,
+                                          0,    0,    0,   0, 0, 0,
+                                          0,    0,    0,   0, 0, 0]
+
+            self.dvl_twist_pub.publish(dvl_msg)
+            self.dvl_pub_seq += 1
 
 
         elif id == NORTEK_DEFINES.AHRS_DATA_ID:
