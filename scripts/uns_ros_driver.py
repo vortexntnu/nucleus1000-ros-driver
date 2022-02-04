@@ -9,12 +9,11 @@ import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
-from uns_driver import UnsDriver
+from UnsDriver import UnsDriverThread
 from tf.transformations import quaternion_from_euler
 
 import time
 import serial
-
 
 class NORTEK_DEFINES:
     """
@@ -38,7 +37,7 @@ class NORTEK_DEFINES:
     AHRS_INITIALIZING = 1
     AHRS_REGULAR_MODE = 2
 
-class UnsRosDriver(UnsDriver):
+class UnsRosDriver(UnsDriverThread):
 
     def __init__(self):
         # TODO: Get as rosparam - could maybe get port automatically from device ID
@@ -47,15 +46,16 @@ class UnsRosDriver(UnsDriver):
         use_queues = False
         self.uns_frame_id = "uns_link"
 
-        ser = serial.Serial(port=port,
-                            baudrate=baud,
-                            parity=serial.PARITY_NONE,
-                            stopbits=serial.STOPBITS_ONE,
-                            timeout=1)
+        # ser = serial.Serial(port=port,
+        #                     baudrate=baud,
+        #                     parity=serial.PARITY_NONE,
+        #                     stopbits=serial.STOPBITS_ONE,
+        #                     timeout=1)
 
-        UnsDriver.__init__(self, serial_connection=ser, use_queues=use_queues)
-        self.start()
-        self.start_uns()
+        UnsDriverThread.__init__(self, connection_type="tcp", tcp_hostname="129.241.187.25", tcp_port=9000, use_queues=False, timeout=3)
+
+        if self.tcp_ip is None and self.tcp_hostname is not None:
+            self.set_tcp_ip()
 
         self.imu_data_pub = rospy.Publisher("/uns/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
@@ -67,39 +67,50 @@ class UnsRosDriver(UnsDriver):
         self.ahrs_pub_seq = 0
 
         self.altitude_pub = rospy.Publisher("/uns/altitude", Float32, queue_size=10)
+        connected = self.connect_uns()
+        if not connected:
+            print('failed to connect to the UNS. exiting...')
+            exit()
+
+        #rospy.loginfo("Starting thread")
+        #self.start() # Thread start
+        rospy.loginfo("Starting UNS")
+        self.start_uns()
+        rospy.loginfo("Running UNS")
+        self.run() #blocking
     
     def __del__(self):
         self.stop_uns()
+        self.stop()
         self.join(timeout=10)
         rospy.loginfo("Stopping UNS...")
 
-    def write_package(self, package):
+    def write_packet(self, packet):
         """
         This function is executed whenever a package with sensor data is extracted from the UNS data stream. Overwriting
         this function in this class allow a user to handle these packages as they see fit.
         """
-        id = package['id']
-
+        id = packet['id']
 
         if id == NORTEK_DEFINES.IMU_DATA_ID:
             imu_msg = Imu()
 
-            status = package['status']
+            status = packet['status']
 
             imu_msg.header.seq = self.imu_pub_seq
             imu_msg.header.stamp = rospy.Time.now()
             imu_msg.header.frame_id = self.uns_frame_id
 
-            imu_msg.linear_acceleration.x = package['accelerometer_x']
-            imu_msg.linear_acceleration.y = package['accelerometer_y']
-            imu_msg.linear_acceleration.z = package['accelerometer_z']
+            imu_msg.linear_acceleration.x = packet['accelerometer_x']
+            imu_msg.linear_acceleration.y = packet['accelerometer_y']
+            imu_msg.linear_acceleration.z = packet['accelerometer_z']
             imu_msg.linear_acceleration_covariance = [0, 0, 0,
                                                       0, 0, 0,
                                                       0, 0, 0] # Row major about x, y, z
 
-            imu_msg.angular_velocity.x = package['gyro_x']
-            imu_msg.angular_velocity.y = package['gyro_y']
-            imu_msg.angular_velocity.z = package['gyro_z']
+            imu_msg.angular_velocity.x = packet['gyro_x']
+            imu_msg.angular_velocity.y = packet['gyro_y']
+            imu_msg.angular_velocity.z = packet['gyro_z']
             imu_msg.angular_velocity_covariance = [0, 0, 0,
                                                    0, 0, 0,
                                                    0, 0, 0] # Row major about x, y, z
@@ -109,9 +120,9 @@ class UnsRosDriver(UnsDriver):
 
         elif id == NORTEK_DEFINES.MAG_DATA_ID:
 
-            magnetometer_x = package['magnetometer_x']
-            magnetometer_y = package['magnetometer_y']
-            magnetometer_z = package['magnetometer_z']
+            magnetometer_x = packet['magnetometer_x']
+            magnetometer_y = packet['magnetometer_y']
+            magnetometer_z = packet['magnetometer_z']
 
         elif id == NORTEK_DEFINES.DVL_DATA_ID:
             # Data from the three angled transducers
@@ -120,10 +131,10 @@ class UnsRosDriver(UnsDriver):
 
             #status = package['status']
                     
-            v_b   = [package['velocity_beam_0'], package['velocity_beam_1'], package['velocity_beam_2']]
-            d_b   = [package['distance_beam_0'], package['distance_beam_1'], package['distance_beam_2']]
-            fom_b = [package['fom_beam_0'], package['fom_beam_1'], package['fom_beam_2']]
-            fom_xyz = [package['fom_x'], package['fom_y'], package['fom_z']]
+            v_b   = [packet['velocity_beam_0'], packet['velocity_beam_1'], packet['velocity_beam_2']]
+            d_b   = [packet['distance_beam_0'], packet['distance_beam_1'], packet['distance_beam_2']]
+            fom_b = [packet['fom_beam_0'], packet['fom_beam_1'], packet['fom_beam_2']]
+            fom_xyz = [packet['fom_x'], packet['fom_y'], packet['fom_z']]
 
             #any_invalid_data = (~status & 0xFFFFFFFF) & 0x3FFFF # First & is to limit to 32 bit precision and second is to cut off the 18 bits we use
             # Alternatively: any_invalid_data = status < 0x3FFFF
@@ -154,9 +165,9 @@ class UnsRosDriver(UnsDriver):
             dvl_msg.header.stamp = rospy.Time.now()
             dvl_msg.header.frame_id = self.uns_frame_id
 
-            dvl_msg.twist.twist.linear.x = package['velocity_x']
-            dvl_msg.twist.twist.linear.y = package['velocity_y']
-            dvl_msg.twist.twist.linear.z = package['velocity_z']
+            dvl_msg.twist.twist.linear.x = packet['velocity_x']
+            dvl_msg.twist.twist.linear.y = packet['velocity_y']
+            dvl_msg.twist.twist.linear.z = packet['velocity_z']
 
             var_x = fom_xyz[0] * fom_xyz[0]
             var_y = fom_xyz[1] * fom_xyz[1]
@@ -175,8 +186,8 @@ class UnsRosDriver(UnsDriver):
 
         elif id == NORTEK_DEFINES.AHRS_DATA_ID:
 
-            status = package['status']
-            op_mode = package['operation_mode'] # == status?
+            status = packet['status']
+            op_mode = packet['operation_mode'] # == status?
 
             # Currently always in calibrating mode? TODO: Ask :)
             #if op_mode == AHRS_CALIBRATING:
@@ -187,8 +198,8 @@ class UnsRosDriver(UnsDriver):
             #    rospy.logwarn("AHRS initializing...")
             #    return
             
-            fom_ahrs = package['fom_ahrs']
-            fom_field_calib = package['fom_fc1']
+            fom_ahrs = packet['fom_ahrs']
+            fom_field_calib = packet['fom_fc1']
 
             ahrs_pose = PoseWithCovarianceStamped()
 
@@ -196,12 +207,12 @@ class UnsRosDriver(UnsDriver):
             ahrs_pose.header.stamp = rospy.Time.now()
             ahrs_pose.header.frame_id = self.uns_frame_id
             
-            ahrs_pose.pose.pose.position.z = package['depth']
+            ahrs_pose.pose.pose.position.z = packet['depth']
             
-            ahrs_pose.pose.pose.orientation.x = package['quaternion_1']
-            ahrs_pose.pose.pose.orientation.y = package['quaternion_2']
-            ahrs_pose.pose.pose.orientation.z = package['quaternion_3']
-            ahrs_pose.pose.pose.orientation.w = package['quaternion_0']
+            ahrs_pose.pose.pose.orientation.x = packet['quaternion_1']
+            ahrs_pose.pose.pose.orientation.y = packet['quaternion_2']
+            ahrs_pose.pose.pose.orientation.z = packet['quaternion_3']
+            ahrs_pose.pose.pose.orientation.w = packet['quaternion_0']
 
             var_z = 0
             var_rx = 0
@@ -219,29 +230,29 @@ class UnsRosDriver(UnsDriver):
 
         elif id == NORTEK_DEFINES.ALT_DATA_ID:
 
-            quality = package['altimeter_quality']
+            quality = packet['altimeter_quality']
 
             distance = Float32()
-            distance.data = package['altimeter_distance']
+            distance.data = packet['altimeter_distance']
 
             self.altitude_pub.publish(distance)
 
         
 
-    def write_condition(self, error_message, package):
-        """
-        This function is executed whenever an error occurs either in the UNS or with the parsing of its data. Overwriting
-        this function in this class allow a user to handle these packages as they see fit.
-        """
-        rospy.logerr("UNS error: %s" % error_message)
+    # def write_condition(self, error_message, package):
+    #     """
+    #     This function is executed whenever an error occurs either in the UNS or with the parsing of its data. Overwriting
+    #     this function in this class allow a user to handle these packages as they see fit.
+    #     """
+    #     rospy.logerr("UNS error: %s" % error_message)
 
-    def write_ascii(self, ascii_package):
-        """
-        This function is executed whenever an ascii string is sent from the UNS. Overwriting his function in this class
-        allow a user to handle these packages as they see fit.
-        """
-        ascii_string = "".join([chr(v) for v in ascii_package])
-        rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
+    # def write_ascii(self, ascii_packet):
+    #     """
+    #     This function is executed whenever an ascii string is sent from the UNS. Overwriting his function in this class
+    #     allow a user to handle these packages as they see fit.
+    #     """
+    #     ascii_string = "".join([chr(v) for v in ascii_packet])
+    #     rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
 
 
 if __name__ == "__main__":
