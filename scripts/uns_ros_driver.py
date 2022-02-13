@@ -41,7 +41,7 @@ class UnsRosDriver(UnsDriverThread):
 
     def __init__(self):
         # TODO: Get as rosparam - could maybe get port automatically from device ID
-        port = "/dev/ttyUSB0"
+        port = '/dev/ttyUSB0'
         baud = 115200
         use_queues = False
         self.uns_frame_id = "uns_link"
@@ -52,10 +52,11 @@ class UnsRosDriver(UnsDriverThread):
         #                     stopbits=serial.STOPBITS_ONE,
         #                     timeout=1)
 
-        UnsDriverThread.__init__(self, connection_type="tcp", tcp_hostname="129.241.187.25", tcp_port=9000, use_queues=False, timeout=3)
+        #UnsDriverThread.__init__(self, connection_type="tcp", tcp_hostname="129.241.187.25", tcp_port=9000, use_queues=False, timeout=3)
+        UnsDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
 
-        if self.tcp_ip is None and self.tcp_hostname is not None:
-            self.set_tcp_ip()
+        # if self.tcp_ip is None and self.tcp_hostname is not None:
+        #     self.set_tcp_ip()
 
         self.imu_data_pub = rospy.Publisher("/uns/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
@@ -67,6 +68,7 @@ class UnsRosDriver(UnsDriverThread):
         self.ahrs_pub_seq = 0
 
         self.altitude_pub = rospy.Publisher("/uns/altitude", Float32, queue_size=10)
+
         connected = self.connect_uns()
         if not connected:
             print('failed to connect to the UNS. exiting...')
