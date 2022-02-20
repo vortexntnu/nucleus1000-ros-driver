@@ -43,17 +43,23 @@ class UnsRosDriver(UnsDriverThread):
         # TODO: Get as rosparam - could maybe get port automatically from device ID
         port = '/dev/ttyUSB0'
         baud = 115200
-        use_queues = False
+        self.use_queues = False
         self.uns_frame_id = "uns_link"
 
-        # ser = serial.Serial(port=port,
-        #                     baudrate=baud,
-        #                     parity=serial.PARITY_NONE,
-        #                     stopbits=serial.STOPBITS_ONE,
-        #                     timeout=1)
 
-        #UnsDriverThread.__init__(self, connection_type="tcp", tcp_hostname="129.241.187.25", tcp_port=9000, use_queues=False, timeout=3)
-        UnsDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
+        self.hostname = "129.241.187.25"
+        self.port = 9000
+        self.ip = socket.gethostbyname(self.hostname)
+
+        UnsDriverThread.__init__(self,
+            connection_type="tcp",
+            tcp_ip=self.ip,
+            tcp_hostname=self.hostname,
+            tcp_port=self.port,
+            use_queues=self.use_queues,
+            timeout=3
+        )
+        #UnsDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
 
         # if self.tcp_ip is None and self.tcp_hostname is not None:
         #     self.set_tcp_ip()
