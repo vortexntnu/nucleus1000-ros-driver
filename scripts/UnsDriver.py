@@ -257,7 +257,8 @@ class UnsConnect:
 
             while b'Please enter password:\r\n' in login:
                 self._write_message(login.decode())
-                password = self._input()
+                #password = self._input()
+                password = "nortek".encode()
                 self.uns_write(password + b'\r\n')
                 login = self.uns_read()
                 if login in b'Welcome to Nortek Fusion DVL1000\r\n':
@@ -335,7 +336,7 @@ class UnsConnect:
 
         while b'Please enter password:\r\n' in login:
             self._write_message(login.decode())
-            password = self._input()
+            password = "nortek".encode()
             self.uns_write(password + b'\r\n')
             login = self.uns_read()
             if b'Welcome to Nortek Fusion DVL1000\r\n' in login:
@@ -545,7 +546,7 @@ class UnsDriver(UnsConnect):
 
         self.uns_write(STOP)
 
-        
+
     def write_packet(self, packet):
 
         if self.queuing:
