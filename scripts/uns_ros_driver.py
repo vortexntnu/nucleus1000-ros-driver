@@ -11,7 +11,7 @@ from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
 from UnsDriver import UnsDriverThread
 from tf.transformations import quaternion_from_euler
-
+import socket
 import time
 import serial
 
@@ -46,10 +46,15 @@ class UnsRosDriver(UnsDriverThread):
         self.use_queues = False
         self.uns_frame_id = "uns_link"
 
-
-        self.hostname = "129.241.187.25"
+        self.hostname = "129.241.187.19"
         self.port = 9000
-        self.ip = socket.gethostbyname(self.hostname)
+
+        try:
+            rospy.loginfo("Getting host by name...")
+            self.ip = socket.gethostbyname(self.hostname)
+        except socket.gaierror as e:
+            rospy.loginfo("Failed to get host by name, exiting")
+            exit()
 
         UnsDriverThread.__init__(self,
             connection_type="tcp",
