@@ -533,10 +533,19 @@ class UnsDriver(UnsConnect):
         self.log_init_time = datetime.now()
         self.driver_running = True
 
+    def start_uns(self):
+
+        self.uns_write(START)
+
     def field_calibration(self):
 
         self.uns_write(FIELDCAL)
 
+    def stop_uns(self):
+
+        self.uns_write(STOP)
+
+        
     def write_packet(self, packet):
 
         if self.queuing:
