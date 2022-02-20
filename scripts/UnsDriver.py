@@ -58,6 +58,7 @@ class UnsConnect:
         self.tcp_ip = tcp_ip
         self.tcp_hostname = tcp_hostname
         self.tcp_port = tcp_port
+        self.tcp_buffer = b''
 
         # udp variables
         self.udp_socket = socket.socket()
@@ -142,7 +143,7 @@ class UnsConnect:
         return self.timeout
 
     def connect_uns(self, serial_port=None, serial_baudrate=None, timeout=None, tcp_ip=None, tcp_hostname=None,
-                    tcp_port=None, udp_port=None, blocking: bool = False) -> bool:
+                    tcp_port=None, udp_port=None, blocking: bool = False, ignore_connection_error=False) -> bool:
 
         if self.uns_connected:
             self.disconnect_uns()
@@ -190,7 +191,8 @@ class UnsConnect:
                 condition = True
 
             except serial.SerialException as e:
-                self._write_message('Failed to connect through serial with error: {}'.format(e))
+                if not ignore_connection_error:
+                    self._write_message('Failed to connect through serial with error: {}'.format(e))
                 condition = False
 
             return condition
@@ -215,7 +217,8 @@ class UnsConnect:
                 condition = True
 
             except Exception as e:
-                self._write_message('Failed to connect with TCP with error: {}'.format(e))
+                if not ignore_connection_error:
+                    self._write_message('Failed to connect with TCP with error: {}'.format(e))
                 condition = False
 
             return condition
@@ -233,13 +236,13 @@ class UnsConnect:
                 condition = True
 
             except Exception as e:
-                self._write_message('Failed to connect with UDP with error: {}'.format(e))
+                if not ignore_connection_error:
+                    self._write_message('Failed to connect with UDP with error: {}'.format(e))
                 condition = False
 
             return condition
 
         def _login():
-            self.start()
 
             login_status = False
 
@@ -247,17 +250,22 @@ class UnsConnect:
                 self._write_message("UNS not connected")
                 return login_status
 
-            while True:
-                password = b'nortek'
+            login = self.uns_read()
+
+            if not b'Please enter password:\r\n' in login:
+                raise Exception('Did not receive login message when connecting to TCP')
+
+            while b'Please enter password:\r\n' in login:
+                self._write_message(login.decode())
+                password = self._input()
                 self.uns_write(password + b'\r\n')
                 login = self.uns_read()
-                
-                if login in b'Welcome to NortekFusion\r\n\x00':
+                if login in b'Welcome to Nortek Fusion DVL1000\r\n':
                     self._write_message(login.decode())
                     login_status = True
                     break
-
-                time.sleep(0.1)
+                else:
+                    self._write_message('Incorrect password')
 
             return login_status
 
@@ -312,22 +320,53 @@ class UnsConnect:
 
         return self.uns_connected
 
+    def login_tcp(self):
+
+        login_status = False
+
+        if not self.uns_connected:
+            self._write_message("UNS not connected")
+            return login_status
+
+        login = self.uns_read()
+
+        if not b'Please enter password:\r\n' in login:
+            raise Exception('Did not receive login message when connecting to TCP: {}'.format(login))
+
+        while b'Please enter password:\r\n' in login:
+            self._write_message(login.decode())
+            password = self._input()
+            self.uns_write(password + b'\r\n')
+            login = self.uns_read()
+            if b'Welcome to Nortek Fusion DVL1000\r\n' in login:
+                self._write_message(login.decode())
+                login_status = True
+                break
+            else:
+                self._write_message('Incorrect password')
+
+        return login_status
+
     def serial_reset_buffer(self, buffer: str):
 
-        if self.connection_type != 'serial':
+        if self.connection_type != 'serial' and self.connection_type != 'tcp':
             return
 
         try:
-            if buffer == 'input' or buffer == 'both':
-                self.uns_serial.reset_input_buffer()
+            if self.connection_type == 'serial':
+                if buffer == 'input' or buffer == 'both':
+                    self.uns_serial.reset_input_buffer()
 
-            if buffer == 'output' or buffer == 'both':
-                self.uns_serial.reset_output_buffer()
+                if buffer == 'output' or buffer == 'both':
+                    self.uns_serial.reset_output_buffer()
+
+            elif self.connection_type == 'tcp':
+                self.tcp_buffer = b''
 
             time.sleep(0.1)  # wait for reset to be executed
 
         except Exception as e:
-            self._write_message('Failed to reset serial buffer: {}'.format(e))
+            self._write_message('Failed to reset buffer: {}'.format(e))
 
     def uns_write(self, command: bytes):
 
@@ -346,7 +385,8 @@ class UnsConnect:
         def _send_tcp_command():
 
             try:
-                self.tcp_socket.send(command)
+
+                self.tcp_socket.sendall(command)
             except Exception as e:
                 print('sending TCP command to UNS failed: {}'.format(e))
                 pass
@@ -385,7 +425,8 @@ class UnsConnect:
                         serial_data = self.uns_serial.read(self.uns_serial.in_waiting)
 
                 elif terminator is not None:
-                    serial_data = self.uns_serial.read_until(terminator=terminator, size=size)
+                    #serial_data = self.uns_serial.read_until(expected=terminator, size=size)
+                    serial_data = self.uns_serial.read_until(terminator, size)
 
                 elif size is not None:
                     serial_data = self.uns_serial.read(size=size)
@@ -409,15 +450,24 @@ class UnsConnect:
                 self.tcp_socket.settimeout(timeout)
 
             try:
+                data = self.tcp_socket.recv(4096)
+
+                # TODO: Deal with no data received
+
+                self.tcp_buffer += data
+
                 if terminator is not None:
-                    for i in range(4096):
-                        tcp_data += self.tcp_socket.recv(1)
-                        if terminator in tcp_data:
-                            break
+                    line, separator, self.tcp_buffer = self.tcp_buffer.partition(terminator)
+                    tcp_data = line + separator
+
                 elif size is not None:
-                    tcp_data = self.tcp_socket.recv(size)
+                    tcp_data = self.tcp_buffer[:size]
+                    self.tcp_buffer = self.tcp_buffer[size:]
+
                 else:
-                    tcp_data = self.tcp_socket.recv(4096)
+                    tcp_data = self.tcp_buffer
+                    self.tcp_buffer = b''
+
             except socket.timeout:
                 pass
             except Exception as e:
@@ -468,9 +518,9 @@ class UnsConnect:
 
         return data
 
-    def uns_readline(self):
+    def uns_readline(self, timeout=None) -> bytes:
 
-        return self.uns_read(terminator=LF)
+        return self.uns_read(terminator=LF, timeout=timeout)
 
 
 class UnsDriver(UnsConnect):
@@ -483,17 +533,9 @@ class UnsDriver(UnsConnect):
         self.log_init_time = datetime.now()
         self.driver_running = True
 
-    def start_uns(self):
-
-        self.uns_write(START)
-
     def field_calibration(self):
 
         self.uns_write(FIELDCAL)
-
-    def stop_uns(self):
-
-        self.uns_write(STOP)
 
     def write_packet(self, packet):
 
