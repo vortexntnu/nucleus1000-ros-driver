@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
+
 """
 A ROS wrapper for the UNS driver, based on example code provided by Nortek.
 The UNS driver is inherited into a new class where it is modified in order to better organize how the
@@ -9,7 +10,7 @@ import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
-from UnsDriver import UnsDriverThread
+from UnsDriverTwo import UnsDriverThread
 from tf.transformations import quaternion_from_euler
 import socket
 import time
