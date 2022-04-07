@@ -4,9 +4,14 @@ import serial
 import serial.tools.list_ports
 import queue
 import argparse
-from itertools import zip_longest
 from datetime import datetime
 from struct import unpack, error
+
+# To work with both Python 2 and 3 :(
+try:
+    from itertools import zip_longest
+except ImportError:
+    from itertools import izip_longest as zip_longest
 
 START = "START\r\n".encode()
 STOP = "STOP\r\n".encode()
