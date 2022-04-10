@@ -46,6 +46,7 @@ class UnsRosDriver(UnsDriverThread):
         baud = 115200
         self.use_queues = False
         self.uns_frame_id = "uns_link"
+        self.map_frame_id = "map"
 
         self.hostname = "129.241.187.19"
         self.port = 9000
@@ -219,7 +220,7 @@ class UnsRosDriver(UnsDriverThread):
 
             ahrs_pose.header.seq = self.ahrs_pub_seq
             ahrs_pose.header.stamp = rospy.Time.now()
-            ahrs_pose.header.frame_id = self.uns_frame_id
+            ahrs_pose.header.frame_id = self.map_frame_id
             
             ahrs_pose.pose.pose.position.z = packet['depth']
             
@@ -228,10 +229,10 @@ class UnsRosDriver(UnsDriverThread):
             ahrs_pose.pose.pose.orientation.z = packet['quaternion_3']
             ahrs_pose.pose.pose.orientation.w = packet['quaternion_0']
 
-            var_z = 0
-            var_rx = 0
-            var_ry = 0
-            var_rz = 0
+            var_z = 0.000001
+            var_rx = 0.000001
+            var_ry = 0.000001
+            var_rz = 0.000001
             ahrs_pose.pose.covariance = [0, 0,   0,     0,     0,     0,
                                          0, 0,   0,     0,     0,     0,
                                          0, 0, var_z,   0,     0,     0,
