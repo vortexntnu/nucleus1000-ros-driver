@@ -45,6 +45,7 @@ class UnsRosDriver(UnsDriverThread):
         baud = 115200
         self.use_queues = False
         self.uns_frame_id = "uns_link"
+        self.map_frame_id = "odom"
 
         self.hostname = rospy.get_param("/uns_driver/uns_ip")
         self.port = 9000
