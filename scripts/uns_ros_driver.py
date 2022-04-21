@@ -1,5 +1,4 @@
-#!/usr/bin/python
-
+#!/usr/bin/env python3
 """
 A ROS wrapper for the UNS driver, based on example code provided by Nortek.
 The UNS driver is inherited into a new class where it is modified in order to better organize how the
@@ -10,7 +9,7 @@ import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
-from UnsDriverTwo import UnsDriverThread
+from UnsDriver import UnsDriverThread
 from tf.transformations import quaternion_from_euler
 import socket
 import time
@@ -46,10 +45,11 @@ class UnsRosDriver(UnsDriverThread):
         baud = 115200
         self.use_queues = False
         self.uns_frame_id = "uns_link"
-        self.map_frame_id = "map"
 
-        self.hostname = "129.241.187.19"
+        self.hostname = rospy.get_param("/uns_driver/uns_ip")
         self.port = 9000
+
+        rospy.loginfo(f"Nucleus configured as: {self.hostname}:{self.port}")
 
         try:
             rospy.loginfo("Getting host by name...")
@@ -222,7 +222,7 @@ class UnsRosDriver(UnsDriverThread):
             ahrs_pose.header.stamp = rospy.Time.now()
             ahrs_pose.header.frame_id = self.map_frame_id
             
-            ahrs_pose.pose.pose.position.z = packet['depth']
+            ahrs_pose.pose.pose.position.z = -packet['depth']
             
             ahrs_pose.pose.pose.orientation.x = packet['quaternion_1']
             ahrs_pose.pose.pose.orientation.y = packet['quaternion_2']
