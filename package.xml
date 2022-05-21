@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>uns_driver</name>
+  <name>nucleus1000_driver</name>
   <version>0.0.0</version>
-  <description>The uns_driver package</description>
+  <description>The nucleus1000_driver package</description>
 
-  <maintainer email="chstr@stud.ntnu.no">Christopher Strøm</maintainer>
-  <license>TODO</license>
+  <maintainer email="detoxte@gmail.com">Christopher Strøm</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
