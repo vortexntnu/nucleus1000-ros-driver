@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-A ROS wrapper for the UNS driver, based on example code provided by Nortek.
-The UNS driver is inherited into a new class where it is modified in order to better organize how the
-extracted packages from the UNS are handled.
+A ROS wrapper for the Nucleus1000 DVL driver, based on example code provided by Nortek.
+The Nucleus1000 DVL driver is inherited into a new class where it is modified in order to better organize how the
+extracted packages from the Nucleus1000 DVL are handled.
 """
 
 import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
-from nucleus_driver import UnsDriverThread
+from nucleus_driver import UnsDriverThread as NucleusDriverThread
 from tf.transformations import quaternion_from_euler
 import socket
 import time
@@ -37,7 +37,7 @@ class NORTEK_DEFINES:
     AHRS_INITIALIZING = 1
     AHRS_REGULAR_MODE = 2
 
-class UnsRosDriver(UnsDriverThread):
+class NucleusRosDriver(NucleusDriverThread):
 
     def __init__(self):
         # TODO: Get as rosparam - could maybe get port automatically from device ID
@@ -47,7 +47,7 @@ class UnsRosDriver(UnsDriverThread):
         self.uns_frame_id = "uns_link"
         self.map_frame_id = "odom"
 
-        self.hostname = rospy.get_param("/uns_driver/uns_ip")
+        self.hostname = rospy.get_param("/nucleus1000_driver/dvl_ip")
         self.port = 9000
 
         rospy.loginfo(f"Nucleus configured as: {self.hostname}:{self.port}")
@@ -59,7 +59,7 @@ class UnsRosDriver(UnsDriverThread):
             rospy.loginfo("Failed to get host by name, exiting")
             exit()
 
-        UnsDriverThread.__init__(self,
+        NucleusDriverThread.__init__(self,
             connection_type="tcp",
             tcp_ip=self.ip,
             tcp_hostname=self.hostname,
@@ -67,43 +67,43 @@ class UnsRosDriver(UnsDriverThread):
             use_queues=self.use_queues,
             timeout=3
         )
-        #UnsDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
+        #NucleusDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
 
         # if self.tcp_ip is None and self.tcp_hostname is not None:
         #     self.set_tcp_ip()
 
-        self.imu_data_pub = rospy.Publisher("/uns/imu_data", Imu, queue_size=10)
+        self.imu_data_pub = rospy.Publisher("/dvl/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
 
-        self.dvl_twist_pub = rospy.Publisher("/uns/dvl_data", TwistWithCovarianceStamped, queue_size=10)
+        self.dvl_twist_pub = rospy.Publisher("/dvl/dvl_data", TwistWithCovarianceStamped, queue_size=10)
         self.dvl_pub_seq = 0
 
-        self.ahrs_pose_pub = rospy.Publisher("/uns/ahrs_pose", PoseWithCovarianceStamped, queue_size=10)
+        self.ahrs_pose_pub = rospy.Publisher("/dvl/ahrs_pose", PoseWithCovarianceStamped, queue_size=10)
         self.ahrs_pub_seq = 0
 
-        self.altitude_pub = rospy.Publisher("/uns/altitude", Float32, queue_size=10)
+        self.altitude_pub = rospy.Publisher("/dvl/altitude", Float32, queue_size=10)
 
         connected = self.connect_uns()
         if not connected:
-            print('failed to connect to the UNS. exiting...')
+            print('failed to connect to the Nucleus1000 DVL. exiting...')
             exit()
 
         #rospy.loginfo("Starting thread")
         #self.start() # Thread start
-        rospy.loginfo("Starting UNS")
+        rospy.loginfo("Starting Nucleus1000 DVL")
         self.start_uns()
-        rospy.loginfo("Running UNS")
+        rospy.loginfo("Running Nucleus1000 DVL")
         self.run() #blocking
     
     def __del__(self):
         self.stop_uns()
         self.stop()
         self.join(timeout=10)
-        rospy.loginfo("Stopping UNS...")
+        rospy.loginfo("Stopping Nucleus1000 DVL...")
 
     def write_packet(self, packet):
         """
-        This function is executed whenever a package with sensor data is extracted from the UNS data stream. Overwriting
+        This function is executed whenever a package with sensor data is extracted from the Nucleus1000 DVL data stream. Overwriting
         this function in this class allow a user to handle these packages as they see fit.
         """
         id = packet['id']
@@ -275,7 +275,7 @@ if __name__ == "__main__":
 
     rospy.init_node("uns_driver", anonymous=False)
 
-    uns_ros_driver = UnsRosDriver()
+    uns_ros_driver = NucleusRosDriver()
 
     while uns_ros_driver.driver_running and not rospy.is_shutdown():
         # This just loops while the driver is running in a separate thread
