@@ -1,5 +1,5 @@
-# Nortek-UNS-ROS-Driver
-Repo containing the ROS driver for the Nortek UNS. Currently on a need-to-know license.
+# Nortek Nucleus1000 ROS driver
+Repo containing the ROS driver for the Nortek Nucleus1000.
 
 The uns_ros_driver.py is a wrapper for the uns_driver.py provided by Nortek. The provided driver
 could be altered directly to work well with ROS (remove most of the threading stuff and such), but
