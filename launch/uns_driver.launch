@@ -1,7 +1,0 @@
-<?xml version="1.0"?>
-<launch>
-    <arg name="ip" default = ""/>
-    <node pkg="uns_driver" type="uns_ros_driver.py" name="uns_driver" output="screen">
-        <param name="/uns_ip" value="$(arg ip)"/>
-    </node>
-</launch>

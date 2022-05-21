@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="ip" default = ""/>
+    <node pkg="nucleus1000_driver" type="nucleus_ros_driver.py" name="nucleus1000_driver" output="screen">
+        <param name="/dvl_ip" value="$(arg ip)"/>
+    </node>
+</launch>
