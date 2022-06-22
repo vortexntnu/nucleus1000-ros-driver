@@ -9,11 +9,11 @@ import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
-from nucleus_driver import UnsDriverThread as NucleusDriverThread
-from tf.transformations import quaternion_from_euler
+
 import socket
 import time
-import serial
+
+from nucleus_driver import UnsDriverThread as NucleusDriverThread
 
 class NORTEK_DEFINES:
     """
@@ -40,37 +40,6 @@ class NORTEK_DEFINES:
 class NucleusRosDriver(NucleusDriverThread):
 
     def __init__(self):
-        # TODO: Get as rosparam - could maybe get port automatically from device ID
-        port = '/dev/ttyUSB0'
-        baud = 115200
-        self.use_queues = False
-        self.uns_frame_id = "uns_link"
-        self.map_frame_id = "odom"
-
-        self.hostname = rospy.get_param("/nucleus1000_driver/dvl_ip")
-        self.port = 9000
-
-        rospy.loginfo(f"Nucleus configured as: {self.hostname}:{self.port}")
-
-        try:
-            rospy.loginfo("Getting host by name...")
-            self.ip = socket.gethostbyname(self.hostname)
-        except socket.gaierror as e:
-            rospy.loginfo("Failed to get host by name, exiting")
-            exit()
-
-        NucleusDriverThread.__init__(self,
-            connection_type="tcp",
-            tcp_ip=self.ip,
-            tcp_hostname=self.hostname,
-            tcp_port=self.port,
-            use_queues=self.use_queues,
-            timeout=3
-        )
-        #NucleusDriverThread.__init__(self, connection_type='serial', serial_port=port, serial_baudrate=baud, use_queues=False)
-
-        # if self.tcp_ip is None and self.tcp_hostname is not None:
-        #     self.set_tcp_ip()
 
         self.imu_data_pub = rospy.Publisher("/dvl/imu_data", Imu, queue_size=10)
         self.imu_pub_seq = 0
@@ -83,22 +52,50 @@ class NucleusRosDriver(NucleusDriverThread):
 
         self.altitude_pub = rospy.Publisher("/dvl/altitude", Float32, queue_size=10)
 
-        connected = self.connect_uns()
+        self.uns_frame_id = "uns_link"
+        self.map_frame_id = "odom"
+
+        self.hostname = rospy.get_param("/nucleus1000_driver/dvl_ip")
+        self.port = 9000
+        self.use_queues = True
+
+        rospy.loginfo(f"Nucleus configured as: {self.hostname}:{self.port}")
+
+        try:
+            rospy.loginfo("Getting host by name...")
+            self.ip = socket.gethostbyname(self.hostname)
+        except socket.gaierror as e:
+            rospy.loginfo("Failed to get host by name, exiting")
+            exit()
+
+        self.nucleus_driver = NucleusDriverThread(
+            connection_type="tcp",
+            tcp_ip=self.ip,
+            tcp_hostname=self.hostname,
+            tcp_port=self.port,
+            use_queues=self.use_queues,
+            timeout=3
+        )
+
+        connected = self.nucleus_driver.connect_uns()
         if not connected:
             print('failed to connect to the Nucleus1000 DVL. exiting...')
             exit()
 
-        #rospy.loginfo("Starting thread")
-        #self.start() # Thread start
         rospy.loginfo("Starting Nucleus1000 DVL")
-        self.start_uns()
+        self.nucleus_driver.start()
         rospy.loginfo("Running Nucleus1000 DVL")
-        self.run() #blocking
+        self.nucleus_driver.start_uns()
+
+    def spin(self):
+        while not rospy.is_shutdown():
+            time.sleep(0.01)
+        self.nucleus_driver.driver_running = False
+
     
     def __del__(self):
-        self.stop_uns()
-        self.stop()
-        self.join(timeout=10)
+        self.nucleus_driver.join(timeout=10)
+        self.nucleus_driver.disconnect_uns()
         rospy.loginfo("Stopping Nucleus1000 DVL...")
 
     def write_packet(self, packet):
@@ -253,35 +250,9 @@ class NucleusRosDriver(NucleusDriverThread):
 
             self.altitude_pub.publish(distance)
 
-        
-
-    # def write_condition(self, error_message, package):
-    #     """
-    #     This function is executed whenever an error occurs either in the UNS or with the parsing of its data. Overwriting
-    #     this function in this class allow a user to handle these packages as they see fit.
-    #     """
-    #     rospy.logerr("UNS error: %s" % error_message)
-
-    # def write_ascii(self, ascii_packet):
-    #     """
-    #     This function is executed whenever an ascii string is sent from the UNS. Overwriting his function in this class
-    #     allow a user to handle these packages as they see fit.
-    #     """
-    #     ascii_string = "".join([chr(v) for v in ascii_packet])
-    #     rospy.loginfo("ASCII string received from UNS: %s" % ascii_string)
-
 
 if __name__ == "__main__":
-
     rospy.init_node("uns_driver", anonymous=False)
 
     uns_ros_driver = NucleusRosDriver()
-
-    while uns_ros_driver.driver_running and not rospy.is_shutdown():
-        # This just loops while the driver is running in a separate thread
-        try:
-            time.sleep(1)
-        except KeyboardInterrupt:
-            break
-
-    uns_ros_driver.driver_running = False
+    uns_ros_driver.spin()
