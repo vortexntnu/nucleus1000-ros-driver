@@ -13,20 +13,19 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStam
 import socket
 import time
 
-from nucleus_driver import UnsDriverThread as NucleusDriverThread
+from NucleusDriver import NucleusDriver
 
 class NORTEK_DEFINES:
     """
     This class just serves as a pseudo-namespace for constants defined by nortek
     """
-    IMU_DATA_ID = "0x82"
-    MAG_DATA_ID = "0x87"
-    GNSS_DATA_ID = "0x91"
-    ALT_DATA_ID = "0xaa"
-    DVL_DATA_ID = "0xb4"
-    WATER_TRACK_DATA_ID = "0xbe"
-    AHRS_DATA_ID = "0xd2" 
-    INS_DATA_ID = "0xdc"
+    ID_IMU = "0x82"
+    ID_MAGNETOMETER = "0x87"
+    ID_BOTTOMTRACK = "0xb4"
+    ID_WATERTRACK = "0xbe"
+    ID_ALTIMETER = "0xaa"
+    ID_AHRS = "0xd2"
+    ID_FIELD_CALIBRATION = "0x8B"
 
     INVALID_FOM = 9.9   # Data sheet says 10.0, set lower here to be on the safe side :)
     INVALID_DISTANCE = 0.0
@@ -37,7 +36,7 @@ class NORTEK_DEFINES:
     AHRS_INITIALIZING = 1
     AHRS_REGULAR_MODE = 2
 
-class NucleusRosDriver(NucleusDriverThread):
+class NucleusRosDriver():
 
     def __init__(self):
 
@@ -52,67 +51,64 @@ class NucleusRosDriver(NucleusDriverThread):
 
         self.altitude_pub = rospy.Publisher("/dvl/altitude", Float32, queue_size=10)
 
-        self.uns_frame_id = "uns_link"
+        self.sensor_frame_id = "uns_link"
         self.map_frame_id = "odom"
 
         self.hostname = rospy.get_param("/nucleus1000_driver/dvl_ip")
+        if self.hostname == "":
+            self.hostname = "169.254.15.123"
         self.port = 9000
         self.use_queues = True
 
         rospy.loginfo(f"Nucleus configured as: {self.hostname}:{self.port}")
 
-        try:
-            rospy.loginfo("Getting host by name...")
-            self.ip = socket.gethostbyname(self.hostname)
-        except socket.gaierror as e:
-            rospy.loginfo("Failed to get host by name, exiting")
+        self.nucleus_driver = NucleusDriver()
+
+        self.nucleus_driver.connection.set_tcp_configuration(host=self.hostname)
+        self.nucleus_driver.connection.set_tcp_configuration(port=int(self.port))
+        self.nucleus_driver.connection.connect(connection_type="tcp")
+        self.nucleus_driver.parser.set_queuing(packet=self.use_queues)
+
+        if self.nucleus_driver.connection.get_connection_status() is not True:
+            rospy.logerr("Nucleus is not connected!")
+            rospy.signal_shutdown("Nucleus is not connected!")
             exit()
 
-        self.nucleus_driver = NucleusDriverThread(
-            connection_type="tcp",
-            tcp_ip=self.ip,
-            tcp_hostname=self.hostname,
-            tcp_port=self.port,
-            use_queues=self.use_queues,
-            timeout=3
-        )
 
-        connected = self.nucleus_driver.connect_uns()
-        if not connected:
-            print('failed to connect to the Nucleus1000 DVL. exiting...')
-            exit()
+        self.nucleus_driver.thread.start()
+        #self.nucleus_driver.logging.start()
+        self.nucleus_driver.commands.start() # Send START to Nucleus1000
 
-        rospy.loginfo("Starting Nucleus1000 DVL")
-        self.nucleus_driver.start()
-        rospy.loginfo("Running Nucleus1000 DVL")
-        self.nucleus_driver.start_uns()
 
     def spin(self):
         while not rospy.is_shutdown():
+            try:
+                packet = self.nucleus_driver.parser.read_packet()
+                self.parse_packet_ros(packet)
+            except Exception as err:
+                pass
             time.sleep(0.01)
-        self.nucleus_driver.driver_running = False
-
-    
-    def __del__(self):
-        self.nucleus_driver.join(timeout=10)
-        self.nucleus_driver.disconnect_uns()
+            
         rospy.loginfo("Stopping Nucleus1000 DVL...")
+        #self.nucleus_driver.logging.stop()
+        self.nucleus_driver.thread.stop()
+        self.nucleus_driver.commands.stop() # Send STOP to Nucleus1000
 
-    def write_packet(self, packet):
+    def parse_packet_ros(self, packet):
         """
         This function is executed whenever a package with sensor data is extracted from the Nucleus1000 DVL data stream. Overwriting
         this function in this class allow a user to handle these packages as they see fit.
         """
         id = packet['id']
 
-        if id == NORTEK_DEFINES.IMU_DATA_ID:
+        if id == NORTEK_DEFINES.ID_IMU:
             imu_msg = Imu()
 
             status = packet['status']
 
             imu_msg.header.seq = self.imu_pub_seq
             imu_msg.header.stamp = rospy.Time.now()
-            imu_msg.header.frame_id = self.uns_frame_id
+            imu_msg.header.frame_id = self.sensor_frame_id
 
             imu_msg.linear_acceleration.x = packet['accelerometer_x']
             imu_msg.linear_acceleration.y = packet['accelerometer_y']
@@ -131,13 +127,13 @@ class NucleusRosDriver(NucleusDriverThread):
             self.imu_data_pub.publish(imu_msg)
             self.imu_pub_seq += 1
 
-        elif id == NORTEK_DEFINES.MAG_DATA_ID:
+        elif id == NORTEK_DEFINES.ID_MAGNETOMETER:
 
             magnetometer_x = packet['magnetometer_x']
             magnetometer_y = packet['magnetometer_y']
             magnetometer_z = packet['magnetometer_z']
 
-        elif id == NORTEK_DEFINES.DVL_DATA_ID:
+        elif id == NORTEK_DEFINES.ID_BOTTOMTRACK:
             # Data from the three angled transducers
             # This could be simplified using the status bit, see page 11 of the communication spec,
             # but is left like this since we explicitly retrieve the data
@@ -148,6 +144,14 @@ class NucleusRosDriver(NucleusDriverThread):
             d_b   = [packet['distance_beam_0'], packet['distance_beam_1'], packet['distance_beam_2']]
             fom_b = [packet['fom_beam_0'], packet['fom_beam_1'], packet['fom_beam_2']]
             fom_xyz = [packet['fom_x'], packet['fom_y'], packet['fom_z']]
+
+            vel_x = packet['velocity_x']
+            vel_y = packet['velocity_y']
+            vel_z = packet['velocity_z']
+
+            var_x = fom_xyz[0] * fom_xyz[0]
+            var_y = fom_xyz[1] * fom_xyz[1]
+            var_z = fom_xyz[2] * fom_xyz[2]
 
             #any_invalid_data = (~status & 0xFFFFFFFF) & 0x3FFFF # First & is to limit to 32 bit precision and second is to cut off the 18 bits we use
             # Alternatively: any_invalid_data = status < 0x3FFFF
@@ -166,25 +170,27 @@ class NucleusRosDriver(NucleusDriverThread):
                 invalid_data += "xyz-fom "
 
             if invalid_data != "":
-                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
-                return
+                # Note that this is very dirty, but lets us be safe in case the AUV sits on the pool floor!
+                rospy.logwarn("Invalid { %s} received. Setting velocities to zero!" % invalid_data)
+                vel_x = 0
+                vel_y = 0
+                vel_z = 0
+
+                var_x = 0.001
+                var_y = 0.001
+                var_z = 0.001
             
             #pressure = package['pressure']
 
-            # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
             dvl_msg = TwistWithCovarianceStamped()
 
             dvl_msg.header.seq = self.dvl_pub_seq
             dvl_msg.header.stamp = rospy.Time.now()
-            dvl_msg.header.frame_id = self.uns_frame_id
+            dvl_msg.header.frame_id = self.sensor_frame_id
 
-            dvl_msg.twist.twist.linear.x = packet['velocity_x']
-            dvl_msg.twist.twist.linear.y = packet['velocity_y']
-            dvl_msg.twist.twist.linear.z = packet['velocity_z']
-
-            var_x = fom_xyz[0] * fom_xyz[0]
-            var_y = fom_xyz[1] * fom_xyz[1]
-            var_z = fom_xyz[2] * fom_xyz[2]
+            dvl_msg.twist.twist.linear.x = vel_x
+            dvl_msg.twist.twist.linear.y = vel_y
+            dvl_msg.twist.twist.linear.z = vel_z
 
             dvl_msg.twist.covariance = [var_x,  0,    0,   0, 0, 0,
                                           0,  var_y,  0,   0, 0, 0,
@@ -197,7 +203,7 @@ class NucleusRosDriver(NucleusDriverThread):
             self.dvl_pub_seq += 1
 
 
-        elif id == NORTEK_DEFINES.AHRS_DATA_ID:
+        elif id == NORTEK_DEFINES.ID_AHRS:
 
             status = packet['status']
             op_mode = packet['operation_mode'] # == status?
@@ -241,7 +247,7 @@ class NucleusRosDriver(NucleusDriverThread):
             self.ahrs_pose_pub.publish(ahrs_pose)
             self.ahrs_pub_seq += 1
 
-        elif id == NORTEK_DEFINES.ALT_DATA_ID:
+        elif id == NORTEK_DEFINES.ID_ALTIMETER:
 
             quality = packet['altimeter_quality']
 
@@ -252,7 +258,7 @@ class NucleusRosDriver(NucleusDriverThread):
 
 
 if __name__ == "__main__":
-    rospy.init_node("uns_driver", anonymous=False)
+    rospy.init_node("nucleus_ros_driver", anonymous=False)
 
-    uns_ros_driver = NucleusRosDriver()
-    uns_ros_driver.spin()
+    nucleus_ros_driver = NucleusRosDriver()
+    nucleus_ros_driver.spin()
