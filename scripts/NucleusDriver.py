@@ -142,8 +142,7 @@ class NucleusDriver:
                     packet = self.packet_queue.get_nowait()
 
             except Exception as exception:
-                pass
-                #self.messages.write_warning('failed to retrieve packet from packet queue: {}'.format(exception))
+                self.messages.write_warning('failed to retrieve packet from packet queue: {}'.format(exception))
 
             return packet
 
