@@ -51,7 +51,7 @@ class NucleusRosDriver():
 
         self.altitude_pub = rospy.Publisher("/dvl/altitude", Float32, queue_size=10)
 
-        self.sensor_frame_id = "nucleus_link"
+        self.sensor_frame_id = "uns_link"
         self.map_frame_id = "odom"
 
         self.hostname = rospy.get_param("/nucleus1000_driver/dvl_ip")
@@ -145,6 +145,14 @@ class NucleusRosDriver():
             fom_b = [packet['fom_beam_0'], packet['fom_beam_1'], packet['fom_beam_2']]
             fom_xyz = [packet['fom_x'], packet['fom_y'], packet['fom_z']]
 
+            vel_x = packet['velocity_x']
+            vel_y = packet['velocity_y']
+            vel_z = packet['velocity_z']
+
+            var_x = fom_xyz[0] * fom_xyz[0]
+            var_y = fom_xyz[1] * fom_xyz[1]
+            var_z = fom_xyz[2] * fom_xyz[2]
+
             #any_invalid_data = (~status & 0xFFFFFFFF) & 0x3FFFF # First & is to limit to 32 bit precision and second is to cut off the 18 bits we use
             # Alternatively: any_invalid_data = status < 0x3FFFF
             # Check validity of incoming data, note that we avoid == to account for precision errors
@@ -162,25 +170,27 @@ class NucleusRosDriver():
                 invalid_data += "xyz-fom "
 
             if invalid_data != "":
-                rospy.logwarn("Invalid { %s} received. Ignoring package..." % invalid_data)
-                return
+                # Note that this is very dirty, but lets us be safe in case the AUV sits on the pool floor!
+                rospy.logwarn("Invalid { %s} received. Setting velocities to zero!" % invalid_data)
+                vel_x = 0
+                vel_y = 0
+                vel_z = 0
+
+                var_x = 0.001
+                var_y = 0.001
+                var_z = 0.001
             
             #pressure = package['pressure']
 
-            # TODO: Make TwistStamped message out of velocities (not Odom like the dvl1000, because we get depth from ahrs here)
             dvl_msg = TwistWithCovarianceStamped()
 
             dvl_msg.header.seq = self.dvl_pub_seq
             dvl_msg.header.stamp = rospy.Time.now()
             dvl_msg.header.frame_id = self.sensor_frame_id
 
-            dvl_msg.twist.twist.linear.x = packet['velocity_x']
-            dvl_msg.twist.twist.linear.y = packet['velocity_y']
-            dvl_msg.twist.twist.linear.z = packet['velocity_z']
-
-            var_x = fom_xyz[0] * fom_xyz[0]
-            var_y = fom_xyz[1] * fom_xyz[1]
-            var_z = fom_xyz[2] * fom_xyz[2]
+            dvl_msg.twist.twist.linear.x = vel_x
+            dvl_msg.twist.twist.linear.y = vel_y
+            dvl_msg.twist.twist.linear.z = vel_z
 
             dvl_msg.twist.covariance = [var_x,  0,    0,   0, 0, 0,
                                           0,  var_y,  0,   0, 0, 0,
