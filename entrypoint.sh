@@ -1,4 +1,4 @@
 #!/bin/bash
 
 source /nucleus_ws/devel/setup.bash
-roslaunch uns_driver uns_driver.launch ip:="$@"
+roslaunch nucleus1000_driver nucleus1000_driver.launch ip:="$@"
