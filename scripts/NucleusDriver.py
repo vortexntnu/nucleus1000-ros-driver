@@ -886,9 +886,9 @@ class NucleusDriver:
 
                 try:
                     self.tcp = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-                    self.tcp.connect((self.tcp_configuration.host, self.tcp_configuration.port))
                     self.tcp.settimeout(self.timeout)
-
+                    self.tcp.connect((self.tcp_configuration.host, self.tcp_configuration.port))
+                    
                 except Exception as exception:
                     self.messages.write_exception(message='Failed to connect through TCP: {}'.format(exception))
                     return False
